@@ -3,102 +3,110 @@
 #include <vector>
 #include <cmath>
 #include <algorithm>
+#include <limits>
+#include <iomanip>
 
 using namespace std;
 
-// Sort the data by x coordinate, use hybrid introsort algorithm, time complexity = O(n log n)
-void sort_data(vector<pair<float, float>> &data) {
-    sort(data.begin(), data.end());
-}
 
-// 2D similarity calculation
-float similarity(pair<float, float> p1, pair<float, float> p2) {
+// Precision: error must <= 10^-4   -->  use double data type
+// Test number up to 100000 --> use O(nlogn) algorithm
+// No (xi=xj and yi=yj), but there exists xi=xj, or yi=yj.
+
+
+
+// 2D similarity calculation: 歐幾里得距離
+double similarity(pair<double, double> p1, pair<double, double> p2) {
     return sqrt((p1.first - p2.first) * (p1.first - p2.first) + (p1.second - p2.second) * (p1.second - p2.second));
 }
 
-// Find the minimum distance between two points
-float strip_closest(vector<pair<float, float>>& strip, float d) {
-    float min_d = d;
-    sort(strip.begin(), strip.end(), [](const auto& a, const auto& b) {
-        return a.second < b.second;
-    });
+// Find the minimum distance in strip
+double closest_cross(vector<pair<double, double>>& strip, double d) {
+    double min_d = d; 
+    // sorting along y-coor first 
+    sort(strip.begin(), strip.end(), [](const pair<double, double>& a, const pair<double, double>& b){
+    return a.second < b.second; // 依 y 座標排序
+    }); 
+    //sort(strip.begin(), strip.end());
 
-    int n = strip.size();
-    for (int i = 0; i < n; ++i) {
-        for (int j = i + 1; j < n && (strip[j].second - strip[i].second) < min_d; ++j) {
+    int n = strip.size(); // n = number of points in the strip
+    for (int i = 0; i < n; i++) {
+        // j = i + 1 = two points. 
+        // strip[j].second - strip[i].second = distance between two points, if it's smaller than min_d, then update min_d
+        for (int j = i + 1; j < n && (strip[j].second - strip[i].second) < min_d; j++) { 
             min_d = min(min_d, similarity(strip[i], strip[j]));
         }
     }
     return min_d;
 }
 
-float closest_pair_recursive(vector<pair<float, float>>& pts, int left, int right) {
-    if (right - left <= 3) {
-        float min_d = 1e9;
-        for (int i = left; i < right; ++i) {
-            for (int j = i + 1; j < right; ++j) {
-                min_d = min(min_d, similarity(pts[i], pts[j]));
-            }
+// Brute Force time complexity = O(n^2)
+double bruteForce(vector<pair<double, double>>& pts, int left, int right) {
+    // initial min_d = maximum double value
+    double min_d = numeric_limits<double>::max();
+    for (int i = left; i < right; i++) {
+        for (int j = i + 1; j < right; j++) {
+            min_d = min(min_d, similarity(pts[i], pts[j]));
         }
-        sort(pts.begin() + left, pts.begin() + right, [](const auto& a, const auto& b) {
-            return a.second < b.second;
-        });
-        return min_d;
     }
+    return min_d;
+}
 
-    int mid = (left + right) / 2;
-    float mid_x = pts[mid].first;
-    float d_left = closest_pair_recursive(pts, left, mid);
-    float d_right = closest_pair_recursive(pts, mid, right);
-    float d = min(d_left, d_right);
 
-    inplace_merge(pts.begin() + left, pts.begin() + mid, pts.begin() + right,
-                  [](const auto& a, const auto& b) {
-                      return a.second < b.second;
-                  });
+// Main recursive function to find min_distance
+double closest_pair_recursive(vector<pair<double, double>>& pts, int left, int right) {
+    // if the number of points is less than a small number, use force solution.
+    if (right - left <= 10) {
+        return bruteForce(pts, left, right);
+    }
+    // Devide and conquer
+    double mid = (left + right) / 2;
 
-    vector<pair<float, float>> strip;
-    for (int i = left; i < right; ++i) {
-        if (fabs(pts[i].first - mid_x) < d) {
+    // x = first element of the pair
+    double mid_x = pts[mid].first;
+
+    // Conquer the rest part.
+    double distance_left = closest_pair_recursive(pts, left, mid);
+    double distance_right = closest_pair_recursive(pts, mid, right);
+    double min_distance = min(distance_left, distance_right);
+
+    // combine: store the points in the strip 
+    // put any points that have smaller distance than min_distance into the strip
+    vector<pair<double, double>> strip;
+    for (int i = left; i < right; i++) {
+        if (fabs(pts[i].first - mid_x) < min_distance) { // distance between x and mid_x is smaller than min_distance
             strip.push_back(pts[i]);
         }
     }
 
-    return min(d, strip_closest(strip, d));
+    // return the smaller one
+    return min(min_distance, closest_cross(strip, min_distance));
 }
 
-float find_min_distance(vector<pair<float, float>> &data) {
-    sort(data.begin(), data.end());  // sort by x
-    return closest_pair_recursive(data, 0, data.size());
+double find_min_distance(vector<pair<double, double>>& champs) {
+    return closest_pair_recursive(champs, 0, champs.size());
 }
-
 
 int main() {
     int T, n;
-    float min_distance;
+    double min_distance;
     // 2d vector to store the points
-    // try float first, if the error is too large, try double
     // Use vector pair to store the data xi, yi
-    vector<pair<float, float>> data;
+    vector<pair<double, double>> data;
     
     cin >> T; // T = number of test cases
     for (int i = 0; i < T; i++) {
-        cin >> n; // n = number of champs
-        // Read n pairs of cpoints
+        cin >> n; // n = number of champs 
+        // Read n pairs of points
         for (int j = 0; j < n; j++) {
-            float x, y;
+            double x, y;
             cin >> x >> y;
             data.push_back({x, y});
         }
         
-        // Calculate the smallest similarity, like the minimum distance between two points.
-        // If using 暴力法, time complexity = O(n^2)
-        // Divide: Sort data in x-coordinate and slice data into two parts
-        // Conquer: find minimum distance in left/right area
-        // Combine: find the minimum distance between two areas
-        sort_data(data);
+        sort(data.begin(), data.end()); // we need to sort along x-axis first, then along y-axis
         min_distance = find_min_distance(data);
-        cout << min_distance << endl;
+        cout << fixed << setprecision(6) << min_distance << endl; // set precision to 6
         data.clear();
     }
     return 0;
