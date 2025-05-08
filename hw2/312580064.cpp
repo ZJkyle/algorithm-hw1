@@ -1,115 +1,114 @@
-// Optimal binary search tree
-// Target: minimize Total cost = summation of frequency * level
-/*
-input format 
-T = number of test cases
-N = number of keys
-k1 k2 ... kN
-f1 f2 ... fN
-Constraints
-1 ≤ T ≤ 100
-1 ≤ N ≤ 500
-1 ≤ ki ≤ 10000
-1 ≤ fi ≤ 10000
-The keys are distinct.
-*/
+#include <iostream>
+#include <vector>
+#include <string>
+#include <queue>
+#include <limits>
 
-#include <bits/stdc++.h>
 using namespace std;
+const int Max_n = 501;
+int cost[Max_n][Max_n]; // min cost from i to j key e.g. cost[0][0] = freq[0]
+int root[Max_n][Max_n]; // best root from i to j.
+int freqsum[Max_n+1];
+vector<int> keys(Max_n), freq(Max_n);
 
-// dp[i][j]: keys[i..j] 最佳化子樹的最小成本
-// root[i][j]: 使 dp[i][j] 最小的那個根節點索引
-int dp[501][501], rootIdx[501][501];
-int prefixFreq[502];  // prefixFreq[i] = freq[0] + ... + freq[i-1]
 
-int sumFreq(int i, int j) {
-    return prefixFreq[j+1] - prefixFreq[i];
+int freqsuminterval (int i, int j){  // calculate sum of freq[i]~freq[j]
+    return freqsum[j+1] - freqsum[i];
 }
 
-int main(){
-    ios::sync_with_stdio(false);
-    cin.tie(nullptr);
+struct treenode{
+    int key;
+    treenode* leftnode;
+    treenode* rightnode;
+    treenode(int val): key(val), leftnode(nullptr), rightnode(nullptr){} // constructor: Node* root = new Node(10); -> key = 10
+};
 
-    int T; 
-    cin >> T;
-    while (T--) {
-        int N; 
-        cin >> N;
-        vector<int> keys(N), freq(N);
-        for(int i=0;i<N;i++) cin>>keys[i];
-        for(int i=0;i<N;i++) cin>>freq[i];
+ // task: buildtree(i, j) to find best root and contrust left, right subtree recursively  
+treenode* buildtree (int i, int j){
+    // end cond: if i<j
+    if(i>j) return nullptr;
 
-        // 前置：建 prefixFreq
-        prefixFreq[0] = 0;
-        for(int i=0;i<N;i++) 
-            prefixFreq[i+1] = prefixFreq[i] + freq[i];
+    // for interval i~j, best root r = root[i][j] and build node(key[r]) 
+    int r = root[i][j];
+    treenode* node = new treenode(keys[r]);
+    node->leftnode = buildtree(i, r-1);
+    node->rightnode = buildtree(r+1, j);
 
-        // 初始化
-        for(int i=0;i<N;i++){
-            dp[i][i] = freq[i];
-            rootIdx[i][i] = i;
+    // contrust left, right subtree recursively
+    return node;
+}
+
+int main (){
+    int t; 
+    cin >> t;
+    while (t--){ // do until T rounds 
+        int n;
+        cin >> n;
+        for (int i = 0; i < n; i++) cin >> keys[i];
+        for (int i = 0; i < n; i++) cin >> freq[i];
+        // construct freq sum table for calculations
+        freqsum[0] = 0;
+        for (int i =0;i<n;i++){
+            freqsum[i+1] = freqsum[i]+freq[i];
         }
-        for(int i=0;i<N;i++){
-            dp[i][i-1] = 0;   // 空區間
+        // DP special cases: 
+        for(int i = 0; i < n; i++){
+            // single key
+            cost[i][i] = freq[i]; 
+            root[i][i] = i;
+            // illegal issue 
+            for (int j=0; j <n ;j++){
+                if(i>j) cost[i][j]=0;
+            }
         }
-
-        // DP
-        for(int len=2; len<=N; len++){
-            for(int i=0; i+len-1 < N; i++){
-                int j = i+len-1;
-                dp[i][j] = numeric_limits<int>::max();
-                // Knuth 優化（可選，若 keys 已有單調性可加速到 O(N³)→O(N²)）
-                for(int r = rootIdx[i][j-1]; r <= rootIdx[i+1][j]; r++){
-                    int costLeft  = dp[i][r-1];
-                    int costRight = dp[r+1][j];
-                    int costAll   = sumFreq(i,j);  
-                    int total = costLeft + costRight + costAll;
-                    if(total < dp[i][j]){
-                        dp[i][j] = total;
-                        rootIdx[i][j] = r;
+        // DP main logic
+        // Sub A: interval length control
+        int leftcost, rightcost, fsum, totalcost;
+        for (int len = 1; len<=n-1; len++){ // control length of interval 
+            for(int i=0; i <n-len; i++){  // caution: avoid make i overrange
+                int j = i+len;
+                // Sub B: 
+                // find min cost[i][j]
+                // initial cost[i][j]= inf
+                // calculate total cost = = min { dp[i][r-1] + dp[r+1][j] + sum(freq[i...j]) }
+                cost[i][j] = numeric_limits<int>::max();
+                for(int r=i;r<=j;r++ ){                    
+                    leftcost = cost[i][r-1];
+                    rightcost = cost[r+1][j];
+                    fsum = freqsuminterval(i, j);
+                    totalcost = leftcost+rightcost+fsum;
+                    if(cost[i][j]>totalcost) {
+                        cost[i][j] = totalcost; // min cost for i~j
+                        root[i][j] = r; // best root for i~j
                     }
                 }
-            }
+            }    
         }
-
-        // 重建樹，然後做層序遍歷輸出
-        // 我們用一個簡單的節點結構 + queue
-        struct Node { int key; Node *l,*r; Node(int k):key(k),l(nullptr),r(nullptr){} };
-        function<Node*(int,int)> build = [&](int i,int j)->Node* {
-            if(i>j) return nullptr;
-            int r = rootIdx[i][j];
-            Node* node = new Node(keys[r]);
-            node->l = build(i, r-1);
-            node->r = build(r+1, j);
-            return node;
-        };
-        Node* root = build(0, N-1);
-
-        // 層序遍歷並輸出
-        queue<Node*> q;
-        q.push(root);
-        vector<string> out;
+        // rebuild OBST and output 
+        treenode* node = buildtree(0, n-1); // this will build OBST tree
+        // task: use queue to go through the tree, and store output to result
+        queue<treenode*> q;
+        vector<string> result; 
+        q.push(node); 
         while(!q.empty()){
-            Node* u = q.front(); q.pop();
-            if(u){
-                out.push_back(to_string(u->key));
-                q.push(u->l);
-                q.push(u->r);
+            treenode* first = q.front(); // first node(root) in queue 
+            q.pop();
+
+            if(first == nullptr){
+                result.push_back("-1");
             } else {
-                out.push_back("-1");
+                result.push_back(to_string(first->key));
+                q.push(first->leftnode);
+                q.push(first->rightnode);
             }
         }
-        // 去掉尾端多餘的 -1
-        while(!out.empty() && out.back() == "-1")
-            out.pop_back();
-
-        // 輸出一行
-        for(auto &s: out) 
-            cout << s << ' ';
-        cout << "\n";
-
-        // (若要避免 leak，可遞迴 delete Tree，但競程裡常略過)
+        while(!result.empty()&& result.back()=="-1"){
+            result.pop_back();
+        }
+        for(int i=0;i<result.size();i++){
+            cout<<result[i]<<" ";
+        }
+        cout <<"\n";
     }
 
-    return 0;
 }
